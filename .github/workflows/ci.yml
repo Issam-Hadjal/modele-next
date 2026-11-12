@@ -6,11 +6,19 @@ on:
   push:
     branches: [dev]
 
+# Le jeton du workflow lit le dépôt, rien de plus : les scripts des paquets
+# installés tournent dans ce job.
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          # Aucune étape ne pousse : le jeton ne reste pas dans la configuration git.
+          persist-credentials: false
 
       - name: Socle — Marqueurs de conflit non résolus
         run: |
@@ -39,7 +47,7 @@ jobs:
           echo "Aucun marqueur de blocage trouvé."
 
       - name: Projet — Version de Node épinglée
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           # La version de .nvmrc quand le projet en a une, sinon 24.
           node-version: ${{ hashFiles('.nvmrc') == '' && '24' || '' }}
@@ -47,10 +55,12 @@ jobs:
           # Cache des paquets npm, seulement quand package-lock.json existe :
           # sans lui, setup-node échouerait au lieu de continuer.
           cache: ${{ hashFiles('package-lock.json') != '' && 'npm' || '' }}
+          # Pas de cache automatique : la ligne du dessus décide seule.
+          package-manager-cache: false
 
       - name: Projet — Cache de construction Next.js
         if: hashFiles('next.config.*') != ''
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.next/cache
           # Nouveau cache quand les paquets ou les sources changent ; sinon, reprise du précédent.

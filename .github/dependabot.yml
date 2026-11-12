@@ -1,5 +1,6 @@
-# Mises à jour du modèle Next.js, chaque lundi. Ce fichier ne sert qu'au modèle :
-# il est retiré à l'ouverture d'un projet, qui repart de versions vérifiées ici.
+# Mises à jour du modèle Next.js, chaque dimanche : la veille du lundi les relève, CI
+# terminée, et bot-busquets donne son avis. Ce fichier ne sert qu'au modèle : il est
+# retiré à l'ouverture d'un projet, qui repart de versions vérifiées ici.
 # Les actions de GitHub ne sont pas suivies ici : ci.yml est la copie du gabarit du
 # pipeline et change avec lui.
 version: 2
@@ -8,7 +9,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-      day: monday
+      day: sunday
       time: "06:00"
       timezone: Europe/Paris
     open-pull-requests-limit: 5
