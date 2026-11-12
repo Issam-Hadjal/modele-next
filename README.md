@@ -10,10 +10,11 @@ qui se complète à l’ouverture du projet.
 
 ## Tenu à jour
 
-Dependabot propose chaque lundi les mises à jour des paquets, les mineures
+Dependabot propose chaque dimanche les mises à jour des paquets, les mineures
 regroupées en une pull request. La CI doit être verte ; bot-busquets donne son
-avis ; le propriétaire fusionne. La version de Node (`.nvmrc`, `engines`,
-`@types/node`) change à la main, jamais par Dependabot.
+avis le lundi, dans le rapport de veille ; le propriétaire fusionne, une pull
+request à la fois. La version de Node (`.nvmrc`, `engines`, `@types/node`)
+change à la main, jamais par Dependabot.
 
 `dependabot.yml` ne sert qu’au modèle : il est retiré à l’ouverture d’un projet.
 `.github/workflows/ci.yml` est la copie du gabarit de CI du pipeline : il change
