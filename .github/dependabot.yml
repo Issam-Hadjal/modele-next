@@ -1,0 +1,23 @@
+# Mises à jour du modèle Next.js, chaque lundi. Ce fichier ne sert qu'au modèle :
+# il est retiré à l'ouverture d'un projet, qui repart de versions vérifiées ici.
+# Les actions de GitHub ne sont pas suivies ici : ci.yml est la copie du gabarit du
+# pipeline et change avec lui.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Paris
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      mineures:
+        update-types: [minor, patch]
+    ignore:
+      # La version de Node change à la main, avec .nvmrc et engines.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
