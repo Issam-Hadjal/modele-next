@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+# Bash nommé : GitHub lance alors chaque étape avec « bash --noprofile --norc -eo pipefail ».
+# Sans « shell: bash », c'est « bash -e » seul, et « commande | tee » rend le code de tee :
+# une étape « Projet » en échec passerait au vert (essai sur le modèle, 18/11/2026).
+defaults:
+  run:
+    shell: bash
+
 jobs:
   ci:
     runs-on: ubuntu-latest
