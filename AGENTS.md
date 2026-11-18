@@ -66,13 +66,23 @@ type-checks test files: a test that does not compile breaks the build.
   browser APIs are needed, as low in the tree as possible.
 - Cache Components is on, so every page is prerendered at build time. Never
   read the clock or randomness during render, not even in a Client Component
-  (`Date.now()`, `new Date()`, `Math.random()`, `crypto.randomUUID()`): read
-  them in an event handler or a `useEffect`. Otherwise `next build` fails.
+  (`Date.now()`, `new Date()`, `Math.random()`, `crypto.randomUUID()`):
+  otherwise `next build` fails. Read them in an event handler, or subscribe to
+  them with `useSyncExternalStore`, whose server snapshot is a fixed value.
+- Browser state — the clock, `localStorage`, `matchMedia` — reaches a component
+  through `useSyncExternalStore`, never through a `useEffect` that sets state:
+  the `react-hooks/set-state-in-effect` rule fails the lint. Such a hook lives
+  next to the components that use it, never in `lib/<feature>/`, which stays
+  free of React.
 - Request APIs are asynchronous: `await` `params`, `searchParams`, `cookies()`,
   `headers()`.
 - `proxy.ts`, not `middleware.ts`. Images through `next/image`.
 - Tailwind is configured in CSS, in `app/globals.css`: there is no
   `tailwind.config.js`.
+- A date field (`<input type="date">`) adds `appearance-none min-w-0
+  [&::-webkit-date-and-time-value]:text-left` to the classes of the other
+  fields: Safari on iPhone otherwise draws it wider than its column, and the
+  whole page scrolls sideways. It keeps its type and its native picker.
 - Imports from the repository root use the `@/` alias.
 - Unit tests sit next to what they test: `<name>.test.ts(x)`. Vitest cannot
   render an async Server Component: test the functions it calls.
