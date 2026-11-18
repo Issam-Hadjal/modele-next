@@ -68,6 +68,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('package-lock.json') }}-
 
+      # Une étape « Projet » qui échoue laisse ses quarante dernières lignes en
+      # annotation : les agents lisent les annotations par l'API, jamais le journal.
       - name: Projet — Installation (npm)
         id: installation
         run: |
@@ -77,18 +79,25 @@ jobs:
           fi
           if [ -f package-lock.json ]; then
             echo "package-lock.json présent : npm ci."
-            npm ci
+            commande="npm ci"
           else
             echo "Pas de package-lock.json : npm install."
-            npm install
+            commande="npm install"
           fi
+          fin() { printf '::error title=%s::%s\n' "$1" "$(tail -n 40 "$2" | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN { ORS = "%0A" } { print }')"; }
+          if $commande 2>&1 | tee "$RUNNER_TEMP/installation.log"; then exit 0; fi
+          fin "$commande" "$RUNNER_TEMP/installation.log"
+          exit 1
 
       - name: Projet — Build
         id: build
         run: |
           if [ -f package.json ] && jq -e '.scripts.build' package.json >/dev/null 2>&1; then
             echo "Script build présent : npm run build."
-            npm run build
+            fin() { printf '::error title=%s::%s\n' "$1" "$(tail -n 40 "$2" | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN { ORS = "%0A" } { print }')"; }
+            if npm run build 2>&1 | tee "$RUNNER_TEMP/build.log"; then exit 0; fi
+            fin "npm run build" "$RUNNER_TEMP/build.log"
+            exit 1
           else
             echo "Pas de script build (ou pas de package.json) : rien à construire."
           fi
@@ -100,20 +109,68 @@ jobs:
         run: |
           if [ -f package.json ] && jq -e '.scripts.test' package.json >/dev/null 2>&1; then
             echo "Script test présent : npm test."
-            npm test
+            fin() { printf '::error title=%s::%s\n' "$1" "$(tail -n 40 "$2" | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN { ORS = "%0A" } { print }')"; }
+            if npm test 2>&1 | tee "$RUNNER_TEMP/tests.log"; then exit 0; fi
+            fin "npm test" "$RUNNER_TEMP/tests.log"
+            exit 1
           else
             echo "Pas de script test (ou pas de package.json) : rien à tester."
           fi
 
+      # Le lint en échec : une annotation par problème, erreurs d'abord. Le lecteur ESLint
+      # de setup-node ne suit pas les messages sur plusieurs lignes (règles de React
+      # Compiler, 13/11/2026) : il est retiré, et ESLint est relancé en JSON.
       - name: Projet — Lint
         if: ${{ !cancelled() && steps.installation.outcome == 'success' }}
         run: |
-          if [ -f package.json ] && jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
-            echo "Script lint présent : npm run lint."
-            npm run lint
-          else
+          if [ ! -f package.json ] || ! jq -e '.scripts.lint' package.json >/dev/null 2>&1; then
             echo "Pas de script lint (ou pas de package.json) : rien à vérifier."
+            exit 0
           fi
+          echo "::remove-matcher owner=eslint-stylish::"
+          echo "::remove-matcher owner=eslint-compact::"
+          echo "Script lint présent : npm run lint."
+          fin() { printf '::error title=%s::%s\n' "$1" "$(tail -n 40 "$2" | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN { ORS = "%0A" } { print }')"; }
+          if npm run lint 2>&1 | tee "$RUNNER_TEMP/lint.log"; then exit 0; fi
+          json=""
+          if jq -r '.scripts.lint' package.json | grep -qE '^eslint( |$)'; then
+            npm run lint --silent -- --format json --output-file "$RUNNER_TEMP/eslint.json" >/dev/null 2>&1 || true
+            if [ -s "$RUNNER_TEMP/eslint.json" ]; then json="$RUNNER_TEMP/eslint.json"; fi
+          fi
+          if [ -n "$json" ] && node - "$json" <<'JS'
+          const fs = require("fs"), path = require("path");
+          const rapport = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const echappe = (t, propriete) => {
+            const r = String(t).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+            return propriete ? r.replace(/:/g, "%3A").replace(/,/g, "%2C") : r;
+          };
+          const problemes = [];
+          for (const f of rapport) {
+            for (const m of f.messages) problemes.push({ fichier: path.relative(process.cwd(), f.filePath), ...m });
+          }
+          problemes.sort((a, b) => b.severity - a.severity);
+          const erreurs = problemes.filter((p) => p.severity === 2).length;
+          console.log(`::notice title=ESLint::${erreurs} erreur(s), ${problemes.length - erreurs} avertissement(s) ; GitHub n'annote que les dix premiers de chaque sorte.`);
+          for (const p of problemes) {
+            const prop = [`file=${echappe(p.fichier, true)}`];
+            if (p.line) {
+              prop.push(`line=${p.line}`);
+              if (p.endLine && p.endLine !== p.line) prop.push(`endLine=${p.endLine}`);
+              else if (p.column) {
+                prop.push(`col=${p.column}`);
+                if (p.endColumn) prop.push(`endColumn=${p.endColumn}`);
+              }
+            }
+            prop.push(`title=${echappe(p.ruleId || "eslint", true)}`);
+            const message = p.message.length > 1500 ? p.message.slice(0, 1500) + "…" : p.message;
+            console.log(`::${p.severity === 2 ? "error" : "warning"} ${prop.join(",")}::${echappe(message, false)}`);
+          }
+          JS
+          then
+            exit 1
+          fi
+          fin "npm run lint" "$RUNNER_TEMP/lint.log"
+          exit 1
 
       # Tests de bout en bout et d'accessibilité (Playwright et axe), quand le projet en a.
       # Ils tournent sur la construction de production : jamais après un build en échec.
@@ -127,7 +184,10 @@ jobs:
         run: |
           if jq -e '.scripts["test:e2e"]' package.json >/dev/null 2>&1; then
             echo "Script test:e2e présent : npm run test:e2e."
-            npm run test:e2e
+            fin() { printf '::error title=%s::%s\n' "$1" "$(tail -n 40 "$2" | sed -e 's/\x1b\[[0-9;]*m//g' -e 's/%/%25/g' -e 's/\r/%0D/g' | awk 'BEGIN { ORS = "%0A" } { print }')"; }
+            if npm run test:e2e 2>&1 | tee "$RUNNER_TEMP/e2e.log"; then exit 0; fi
+            fin "npm run test:e2e" "$RUNNER_TEMP/e2e.log"
+            exit 1
           else
             echo "Pas de script test:e2e : rien à lancer."
           fi
